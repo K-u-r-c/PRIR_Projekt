@@ -1,5 +1,4 @@
-
-// main.cpp — FastLog/PRIR: parallel web log analyzer (single-file)
+// main.cpp — FastLog/PRIR: parallel web log analyzer
 // Build: make (produces build/bin/prir)
 // Run examples:
 //   ./build/bin/prir --file access.log --threads 4 --status
@@ -203,13 +202,10 @@ static vector<Chunk> chunk_file(const string &path, int threads) {
 
   // Compact & drop empties
   vector<Chunk> compact;
+  compact.reserve(chunks.size());
   for (auto &c : chunks) {
-    if (c.end <= c.begin)
-      continue;
-    if (compact.empty() || c.begin != compact.back().end)
+    if (c.end > c.begin)
       compact.push_back(c);
-    else
-      compact.back().end = c.end;
   }
   if (compact.empty())
     compact.push_back({0, size});

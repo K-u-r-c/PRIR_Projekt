@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -32,6 +33,23 @@ def load_test_data() -> Dict[str, Any]:
 test_data = load_test_data()
 
 
+class PerfTestPhraseCount(BaseModel):
+  phrase: str
+  count: int
+
+
+class PerfTestEntry(BaseModel):
+  label: str
+  durationMs: float
+  details: Optional[str] = None
+  phrases: List[PerfTestPhraseCount]
+
+
+class PerfTestSummary(BaseModel):
+  entries: List[PerfTestEntry]
+  warnings: Optional[List[str]] = None
+
+
 class RunResult(BaseModel):
   testId: str
   scenarioId: str
@@ -44,6 +62,7 @@ class RunResult(BaseModel):
   finishedAt: str
   success: bool
   errorMessage: Optional[str] = None
+  perfTestSummary: Optional[PerfTestSummary] = None
 
 
 class RunOverrides(BaseModel):
@@ -133,6 +152,70 @@ def _apply_overrides(base_command: str, overrides: RunOverrides) -> str:
   return shlex.join(tokens)
 
 
+PERF_HEADER_RE = re.compile(r"^\[perf-test\]\s+(.*?)\s+took\s+(\d+(?:\.\d+)?)\s+ms(?:\s*\((.*?)\))?$")
+PERF_WARNING_PREFIX = "[perf-test] WARNING"
+
+
+def parse_perf_test_output(stdout: str) -> Optional[PerfTestSummary]:
+  lines = stdout.splitlines()
+  entries: List[PerfTestEntry] = []
+  warnings: List[str] = []
+  idx = 0
+
+  def parse_count(value: str) -> Optional[int]:
+    value = value.strip().replace(",", "")
+    if not value:
+      return None
+    try:
+      return int(value)
+    except ValueError:
+      return None
+
+  while idx < len(lines):
+    line = lines[idx].strip()
+    if not line:
+      idx += 1
+      continue
+    if line.startswith(PERF_WARNING_PREFIX):
+      warning = line.split("WARNING", 1)[-1].strip(": ").strip() or line
+      warnings.append(warning)
+      idx += 1
+      continue
+    match = PERF_HEADER_RE.match(line)
+    if not match:
+      idx += 1
+      continue
+    label = match.group(1).strip()
+    duration_ms = float(match.group(2))
+    details = match.group(3).strip() if match.group(3) else None
+    idx += 1
+
+    while idx < len(lines) and not lines[idx].strip():
+      idx += 1
+
+    phrases: List[PerfTestPhraseCount] = []
+    if idx < len(lines) and lines[idx].strip().lower().startswith("phrase"):
+      idx += 1
+      while idx < len(lines):
+        row = lines[idx].strip()
+        if not row:
+          idx += 1
+          break
+        if row.startswith("[perf-test]"):
+          break
+        if "," in row:
+          phrase, count_str = row.split(",", 1)
+          count = parse_count(count_str)
+          if count is not None:
+            phrases.append(PerfTestPhraseCount(phrase=phrase.strip(), count=count))
+        idx += 1
+    entries.append(PerfTestEntry(label=label, durationMs=duration_ms, details=details, phrases=phrases))
+
+  if not entries and not warnings:
+    return None
+  return PerfTestSummary(entries=entries, warnings=warnings or None)
+
+
 @app.post("/api/tests/{test_id}/scenarios/{scenario_id}/run", response_model=RunResult)
 def execute_scenario(test_id: str, scenario_id: str, overrides: RunOverrides | None = None) -> RunResult:
   test = find_test(test_id)
@@ -154,8 +237,11 @@ def execute_scenario(test_id: str, scenario_id: str, overrides: RunOverrides | N
   started_ts = time.perf_counter()
   error_message = None
 
+  perf_summary: Optional[PerfTestSummary] = None
   try:
     completed = run_command(final_command)
+    if "--perf-test" in final_command:
+      perf_summary = parse_perf_test_output(completed.stdout or "")
   except subprocess.TimeoutExpired as exc:
     finished_at = datetime.now(tz=timezone.utc)
     duration_ms = (time.perf_counter() - started_ts) * 1000
@@ -207,4 +293,5 @@ def execute_scenario(test_id: str, scenario_id: str, overrides: RunOverrides | N
       finishedAt=finished_at.isoformat(),
       success=success,
       errorMessage=error_message,
+      perfTestSummary=perf_summary,
   )

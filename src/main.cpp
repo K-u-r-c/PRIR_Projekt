@@ -45,6 +45,7 @@ struct ProgramConfig {
   bool emitStdout = false;
   bool countOnlyFiltered = false;
   bool useCuda = false;
+  bool perfTestMode = false;
   bool statsEnabled = true;
   StatInterval interval = StatInterval::Hour;
   std::optional<sys_seconds> fromTs;
@@ -274,6 +275,7 @@ void usage(const char *prog) {
             << "  --threads N             Force OpenMP thread count.\n"
             << "  --use-cuda              Use CUDA histogram backend.\n"
             << "  --cpu-only              Disable CUDA even if enabled in the command.\n"
+            << "  --perf-test             Run both CPU and CUDA passes for comparison.\n"
             << "  --help                  Show this message.\n";
 }
 
@@ -344,6 +346,8 @@ std::optional<ProgramConfig> parse_cli(int argc, char **argv, bool isRoot) {
       cfg.useCuda = true;
     } else if (arg == "--cpu-only") {
       cfg.useCuda = false;
+    } else if (arg == "--perf-test") {
+      cfg.perfTestMode = true;
     } else {
       throw std::runtime_error("Unknown argument: " + arg);
     }
@@ -357,11 +361,13 @@ std::optional<ProgramConfig> parse_cli(int argc, char **argv, bool isRoot) {
   for (const auto &phrase : cfg.phrases) {
     cfg.phrasesNormalized.push_back(cfg.caseSensitive ? phrase : to_lower(phrase));
   }
-  if (cfg.useCuda && !gpu::is_available())
+  bool needsCuda = cfg.useCuda || cfg.perfTestMode;
+  if (needsCuda && !gpu::is_available())
     throw std::runtime_error(
-        "--use-cuda requested, but the binary was built without CUDA support "
-        "or no CUDA-capable device is available. Rebuild with USE_CUDA=1 and "
-        "run on a CUDA-enabled host, or drop --use-cuda.");
+        "CUDA acceleration requested (--use-cuda/--perf-test), but the binary "
+        "was built without CUDA support or no CUDA-capable device is available. "
+        "Rebuild with USE_CUDA=1 and run on a CUDA-enabled host, or drop the "
+        "CUDA-specific flag.");
   return cfg;
 }
 
@@ -754,6 +760,60 @@ int main(int argc, char **argv) {
 #endif
 
     FileChunk chunk = read_chunk(cfg, rank, world);
+
+    if (cfg.perfTestMode) {
+#if defined(USE_MPI)
+      if (world > 1)
+        throw std::runtime_error("--perf-test is not supported together with MPI "
+                                 "execution. Run on a single rank.");
+#endif
+      ProgramConfig cpuCfg = cfg;
+      cpuCfg.useCuda = false;
+      ProgramConfig cudaCfg = cfg;
+      cudaCfg.useCuda = true;
+
+      auto runScenario = [&](const std::string &label,
+                             const ProgramConfig &runCfg) {
+        auto start = std::chrono::steady_clock::now();
+        LocalResults localRes = analyze_chunk(chunk, runCfg);
+        auto end = std::chrono::steady_clock::now();
+        auto ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+                .count();
+        std::cout << "\n[perf-test] " << label << " took " << ms << " ms";
+        if (runCfg.useCuda) {
+          if (localRes.gpuUsed)
+            std::cout << " (GPU histogram)";
+          else
+            std::cout << " (GPU fallback)";
+        } else {
+          int threads = 1;
+#ifdef _OPENMP
+          threads = runCfg.requestedThreads > 0 ? runCfg.requestedThreads
+                                                : omp_get_max_threads();
+#endif
+          std::cout << " (" << threads << " CPU thread"
+                    << (threads == 1 ? "" : "s") << ")";
+        }
+        std::cout << "\n";
+        dump_results(localRes, runCfg);
+        return localRes;
+      };
+
+      LocalResults cpuRes = runScenario("CPU baseline", cpuCfg);
+      LocalResults cudaRes = runScenario("CUDA pass", cudaCfg);
+
+      if (cpuRes.phraseCounts != cudaRes.phraseCounts) {
+        std::cerr << "[perf-test] WARNING: counts diverged between CPU and "
+                     "CUDA paths\n";
+      }
+
+#if defined(USE_MPI)
+      MPI_Finalize();
+#endif
+      return 0;
+    }
+
     LocalResults local = analyze_chunk(chunk, cfg);
 
 #if defined(USE_MPI)

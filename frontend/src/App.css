@@ -236,9 +236,24 @@
   gap: 0.5rem;
 }
 
+.scenario-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .scenario-label {
   margin: 0;
   font-weight: 600;
+}
+
+.scenario-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.25);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .scenario-actions {
@@ -346,6 +361,15 @@ pre {
   margin-right: 0.4rem;
 }
 
+.perf-test-hint {
+  align-self: center;
+  font-size: 0.8rem;
+  color: #93c5fd;
+  background: rgba(37, 99, 235, 0.18);
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+}
+
 .scenario-error {
   margin: 0.25rem 0 0;
   color: #fecaca;
@@ -396,6 +420,70 @@ pre {
   max-height: 180px;
   overflow-y: auto;
   background: rgba(7, 11, 20, 0.9);
+}
+
+.perf-test-summary-block {
+  margin-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.perf-test-summary__title {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7dd3fc;
+}
+
+.perf-test-summary__entry {
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.perf-test-summary__entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.perf-test-summary__entry-head strong {
+  font-size: 0.95rem;
+}
+
+.perf-test-summary__details {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.8rem;
+  color: #cbd5f5;
+}
+
+.perf-test-summary__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.perf-test-summary__table th,
+.perf-test-summary__table td {
+  text-align: left;
+  padding: 0.15rem 0.25rem;
+}
+
+.perf-test-summary__table th {
+  color: #93c5fd;
+}
+
+.perf-test-summary__warnings {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  color: #f87171;
+  font-size: 0.8rem;
 }
 
 .verification ul {

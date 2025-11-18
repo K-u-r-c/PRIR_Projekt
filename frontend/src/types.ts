@@ -16,6 +16,7 @@ export interface TestScenario {
   id: string
   label: string
   mode?: PerformanceMode
+  perfTest?: boolean
   command: string
   expectedValues: ExpectedValue[]
   notes?: string
@@ -48,6 +49,23 @@ export interface SuiteResponse {
   tests: TestCase[]
 }
 
+export interface PerfTestPhraseCount {
+  phrase: string
+  count: number
+}
+
+export interface PerfTestEntry {
+  label: string
+  durationMs: number
+  details?: string
+  phrases: PerfTestPhraseCount[]
+}
+
+export interface PerfTestSummary {
+  entries: PerfTestEntry[]
+  warnings?: string[]
+}
+
 export interface RunResult {
   testId: string
   scenarioId: string
@@ -60,4 +78,5 @@ export interface RunResult {
   finishedAt: string
   success: boolean
   errorMessage?: string
+  perfTestSummary?: PerfTestSummary
 }

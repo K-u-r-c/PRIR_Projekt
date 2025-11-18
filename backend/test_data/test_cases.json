@@ -12,6 +12,35 @@
   },
   "tests": [
     {
+      "id": "cuda-benchmark",
+      "name": "CPU vs CUDA benchmark",
+      "shortDescription": "Runs the perf-test mode that executes CPU and GPU passes back-to-back.",
+      "details": "This dedicated card surfaces the new --perf-test flag. It captures real timings for the OpenMP-only and CUDA histogram reductions, validates that both runs return identical counts, and warns you immediately if the GPU fallback path was triggered.",
+      "dataset": "access.log (full archive)",
+      "focus": "cpu-vs-gpu comparison",
+      "phrases": ["GET", "POST"],
+      "tags": ["cuda", "benchmark", "regression"],
+      "scenarios": [
+        {
+          "id": "cpu-gpu-perf-test",
+          "label": "Run perf-test (CPU vs CUDA)",
+          "mode": "cpu",
+          "perfTest": true,
+          "command": "./build/bin/prir --file access.log --phrase GET --phrase POST --no-stats --threads 16 --perf-test",
+          "expectedValues": [
+            { "label": "CPU baseline", "value": "Matches CUDA counts" },
+            { "label": "CUDA pass", "value": "Matches CPU counts" }
+          ],
+          "notes": "Shows two timing blocks after the run so you can compare wall times directly in the UI."
+        }
+      ],
+      "verification": [
+        "CPU and CUDA counts must be identical.",
+        "CUDA histogram should report a lower or comparable duration once the GPU is engaged.",
+        "Warnings should stay empty; a warning indicates the GPU kernel failed and fell back to CPU."
+      ]
+    },
+    {
       "id": "http-methods",
       "name": "HTTP method distribution",
       "shortDescription": "Counts GET vs POST on the full log to stress chunking and reductions.",

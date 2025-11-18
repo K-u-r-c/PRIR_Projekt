@@ -96,7 +96,9 @@ const extractThreadsFromCommand = (command: string): string => {
 
 const defaultScenarioOverride = (scenario: TestScenario): ScenarioOverride => ({
   threads: extractThreadsFromCommand(scenario.command),
-  useCuda: scenario.mode === 'gpu' || commandHasFlag(scenario.command, '--use-cuda'),
+  useCuda: scenario.perfTest
+    ? false
+    : scenario.mode === 'gpu' || commandHasFlag(scenario.command, '--use-cuda'),
   extraArgs: '',
 })
 
@@ -212,7 +214,9 @@ function App() {
     }
     const payload: Record<string, unknown> = {}
     if (override.threads.trim()) payload.threads = Number(override.threads)
-    payload.useCuda = override.useCuda
+    if (!scenario.perfTest) {
+      payload.useCuda = override.useCuda
+    }
     if (override.extraArgs.trim()) payload.extraArgs = override.extraArgs.trim()
     setScenarioStates((prev) => ({ ...prev, [key]: { ...prev[key], running: true } }))
     try {
@@ -405,7 +409,10 @@ function App() {
                     return (
                       <article key={scenario.id} className="scenario-card">
                         <header>
-                          <p className="scenario-label">{scenario.label}</p>
+                          <div className="scenario-label-row">
+                            <p className="scenario-label">{scenario.label}</p>
+                            {scenario.perfTest && <span className="scenario-badge">CPU & GPU</span>}
+                          </div>
                           <div className="scenario-actions">
                             <button onClick={() => handleCopy(scenario.command, key)} className="copy-button" type="button">
                               {copiedScenario === key ? 'Copied' : 'Copy command'}
@@ -445,16 +452,22 @@ function App() {
                               placeholder="inherit"
                             />
                           </label>
-                          <label className="checkbox-row">
-                            <input
-                              type="checkbox"
-                              checked={override.useCuda}
-                              onChange={(event) =>
-                                updateScenarioOverride(selectedTest.id, scenario, { useCuda: event.target.checked })
-                              }
-                            />
-                            <span>Use CUDA</span>
-                          </label>
+                          {!scenario.perfTest ? (
+                            <label className="checkbox-row">
+                              <input
+                                type="checkbox"
+                                checked={override.useCuda}
+                                onChange={(event) =>
+                                  updateScenarioOverride(selectedTest.id, scenario, { useCuda: event.target.checked })
+                                }
+                              />
+                              <span>Use CUDA</span>
+                            </label>
+                          ) : (
+                            <div className="perf-test-hint">
+                              CUDA and CPU runs execute sequentially in this mode.
+                            </div>
+                          )}
                           <label>
                             Extra CLI args
                             <input
@@ -486,6 +499,45 @@ function App() {
                               <summary>stderr</summary>
                               <pre className="output-block">{lastResult.stderr || '(empty)'}</pre>
                             </details>
+                            {lastResult.perfTestSummary && (
+                              <div className="perf-test-summary-block">
+                                <p className="perf-test-summary__title">CPU vs GPU comparison</p>
+                                {lastResult.perfTestSummary.entries.map((entry) => (
+                                  <div key={entry.label} className="perf-test-summary__entry">
+                                    <div className="perf-test-summary__entry-head">
+                                      <strong>{entry.label}</strong>
+                                      <span>{formatMs(entry.durationMs)}</span>
+                                    </div>
+                                    {entry.details && <p className="perf-test-summary__details">{entry.details}</p>}
+                                    {entry.phrases.length > 0 && (
+                                      <table className="perf-test-summary__table">
+                                        <thead>
+                                          <tr>
+                                            <th>Phrase</th>
+                                            <th>Count</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {entry.phrases.map((phrase) => (
+                                            <tr key={phrase.phrase}>
+                                              <td>{phrase.phrase}</td>
+                                              <td>{phrase.count.toLocaleString()}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    )}
+                                  </div>
+                                ))}
+                                {lastResult.perfTestSummary.warnings && lastResult.perfTestSummary.warnings.length > 0 && (
+                                  <ul className="perf-test-summary__warnings">
+                                    {lastResult.perfTestSummary.warnings.map((warning) => (
+                                      <li key={warning}>{warning}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </article>

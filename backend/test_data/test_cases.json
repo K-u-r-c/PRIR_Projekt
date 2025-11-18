@@ -1,0 +1,148 @@
+{
+  "suite": {
+    "title": "PRIR Parallel Analyzer Test Bench",
+    "description": "Interactive dashboard that documents the regression tests for the OpenMP/MPI/CUDA log analyzer. Each card describes the purpose of the test, the command to run, and the expected output so you can validate the binary quickly.",
+    "binaryPath": "./build/bin/prir",
+    "logFile": "access.log (10,365,152 lines)",
+    "notes": [
+      "Stats are disabled in the scenarios to keep the comparison tables compact.",
+      "Use mpirun manually if you want to validate multi-node behaviour; the UI focuses on single-node OpenMP/CUDA runs.",
+      "All commands read ./access.log that lives in the repository root."
+    ]
+  },
+  "tests": [
+    {
+      "id": "http-methods",
+      "name": "HTTP method distribution",
+      "shortDescription": "Counts GET vs POST on the full log to stress chunking and reductions.",
+      "details": "Baseline throughput test that touches the longest code path (MPI chunking + OpenMP map + optional CUDA histogram). The log is large enough to surface synchronisation and memory bottlenecks.",
+      "dataset": "access.log (10M+ entries, Jan 2019 capture)",
+      "focus": "phrase counting + OpenMP scalability",
+      "phrases": ["GET", "POST"],
+      "tags": ["performance", "phrase-count", "cuda"],
+      "scenarios": [
+        {
+          "id": "cpu-only",
+          "label": "CPU only",
+          "mode": "cpu",
+          "command": "./build/bin/prir --file access.log --phrase GET --phrase POST --no-stats --threads 8",
+          "expectedValues": [
+            { "label": "GET", "value": "10,283,350 hits" },
+            { "label": "POST", "value": "139,922 hits" }
+          ],
+          "notes": "Disable stats for a short CSV output that is easy to diff."
+        },
+        {
+          "id": "gpu-histogram",
+          "label": "GPU histogram",
+          "mode": "gpu",
+          "command": "./build/bin/prir --file access.log --phrase GET --phrase POST --no-stats --threads 8 --use-cuda",
+          "expectedValues": [
+            { "label": "GET", "value": "10,283,350 hits" },
+            { "label": "POST", "value": "139,922 hits" }
+          ],
+          "notes": "Use the same phrases, but the histogram reduction runs on CUDA."
+        }
+      ],
+      "verification": [
+        "Counts must stay identical between CPU and GPU runs.",
+        "Wall time should go down as you increase threads up to 8 cores; past that any regression indicates lock contention.",
+        "GPU histogram should never be slower than the CPU baseline by more than ~5%."
+      ],
+      "performance": [
+        { "threads": 1, "cpuMs": 16530, "gpuMs": 17430 },
+        { "threads": 2, "cpuMs": 12200, "gpuMs": 13210 },
+        { "threads": 4, "cpuMs": 10250, "gpuMs": 10690 },
+        { "threads": 8, "cpuMs": 9470, "gpuMs": 10080 },
+        { "threads": 16, "cpuMs": 9930, "gpuMs": 9620 }
+      ]
+    },
+    {
+      "id": "bot-traffic",
+      "name": "Crawler fingerprint",
+      "shortDescription": "Detect the most common bots in the access log.",
+      "details": "Exercises the multiple phrase counter and ensures that mixed casing inside user agents is handled correctly.",
+      "dataset": "access.log",
+      "focus": "multi-phrase counting",
+      "phrases": ["bingbot", "googlebot", "AhrefsBot"],
+      "tags": ["parsing", "bots"],
+      "scenarios": [
+        {
+          "id": "crawler-sweep",
+          "label": "Crawler sweep",
+          "mode": "cpu",
+          "command": "./build/bin/prir --file access.log --phrase bingbot --phrase googlebot --phrase AhrefsBot --no-stats",
+          "expectedValues": [
+            { "label": "bingbot", "value": "401,400 hits" },
+            { "label": "googlebot", "value": "801,797 hits" },
+            { "label": "AhrefsBot", "value": "57,178 hits" }
+          ],
+          "notes": "The command is case-insensitive by default. Use --case-sensitive only if you want to differentiate UA tokens."
+        }
+      ],
+      "verification": [
+        "Counts should stay consistent regardless of thread count.",
+        "Time-to-result should stay within +/-1% compared to baseline because the log subset fits in cache."
+      ]
+    },
+    {
+      "id": "status-histogram",
+      "name": "Status code tokens",
+      "shortDescription": "Counts coarse status tokens to verify pattern overlaps.",
+      "details": "Confirms that the sliding window matcher does not double-count overlapping status markers and still works with whitespace in the phrase.",
+      "dataset": "access.log",
+      "focus": "token overlap handling",
+      "phrases": [" 200 ", " 404 ", " 500 "],
+      "tags": ["validation"],
+      "scenarios": [
+        {
+          "id": "response-stats",
+          "label": "Response stats",
+          "mode": "cpu",
+          "command": "./build/bin/prir --file access.log --phrase \" 200 \" --phrase \" 404 \" --phrase \" 500 \" --no-stats",
+          "expectedValues": [
+            { "label": "Token \" 200 \"", "value": "9,579,872 hits" },
+            { "label": "Token \" 404 \"", "value": "105,289 hits" },
+            { "label": "Token \" 500 \"", "value": "14,410 hits" }
+          ],
+          "notes": "The spaces before and after the number make sure the match is aligned with the HTTP status column."
+        }
+      ],
+      "verification": [
+        "The sum of counts should be lower than the log line total because only a fraction of lines contain these exact status tokens.",
+        "If you switch to --case-sensitive, the numbers stay the same because the tokens are numeric."
+      ]
+    },
+    {
+      "id": "case-sensitivity",
+      "name": "Case sensitivity toggle",
+      "shortDescription": "Shows how lower/upper casing changes hit counts.",
+      "details": "Uses the GET token to illustrate the difference between the default lowercase pipeline and the --case-sensitive path that bypasses normalisation.",
+      "dataset": "access.log",
+      "focus": "case sensitivity",
+      "phrases": ["get"],
+      "tags": ["regression", "options"],
+      "scenarios": [
+        {
+          "id": "folded",
+          "label": "Default (folded)",
+          "mode": "cpu",
+          "command": "./build/bin/prir --file access.log --phrase get --no-stats",
+          "expectedValues": [{ "label": "get", "value": "10,283,350 hits" }]
+        },
+        {
+          "id": "case-sensitive",
+          "label": "Case sensitive",
+          "mode": "cpu",
+          "command": "./build/bin/prir --file access.log --phrase get --no-stats --case-sensitive",
+          "expectedValues": [{ "label": "get", "value": "93,339 hits" }],
+          "notes": "The smaller number comes from lower-case tokens inside user agents and query parameters only."
+        }
+      ],
+      "verification": [
+        "Ratio between folded and strict search (~110x) is a good sanity check that the pipeline is not double normalising.",
+        "The command should complete in under 10 seconds for threads >= 4."
+      ]
+    }
+  ]
+}

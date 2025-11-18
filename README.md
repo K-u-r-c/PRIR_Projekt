@@ -117,6 +117,37 @@ mpirun -np 16 ./prir --file telemetry.log --phrase ALERT --use-cuda --threads 8
 Program rozpoznaje fragmenty `YYYY-MM-DD HH:MM:SS` lub `YYYY-MM-DDTHH:MM:SS`.
 Linie bez poprawnego czasu sa pomijane podczas filtrow czasowych i w statystykach.
 
+## Interaktywny frontend + backend testowy
+
+Repozytorium zawiera aplikacje React (`frontend/`) oraz lekki serwis FastAPI (`backend/`),
+ktore razem tworza dashboard do uruchamiania scenariuszy testowych oraz porownywania czasow CPU/GPU.
+
+1. Backend (FastAPI, domyslnie http://127.0.0.1:8000):
+
+   ```bash
+   cd backend
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   uvicorn backend.main:app --reload
+   ```
+
+   Serwis udostepnia `GET /api/tests` (lista testow) oraz
+   `POST /api/tests/{test_id}/scenarios/{scenario_id}/run`, ktory uruchamia
+   polecenie zdefiniowane w scenariuszu i zwraca czas wykonania wraz z
+   przechwyconym stdout/stderr.
+
+2. Frontend (Vite + React):
+
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+   Aby ustawic inny adres backendu, zdefiniuj `VITE_API_BASE_URL`
+   (np. plik `.env.local`). Domyslnie aplikacja zaklada, ze backend nasluchuje
+   pod `http://localhost:8000/api`.
+
 ## Licencja
 
 MIT.

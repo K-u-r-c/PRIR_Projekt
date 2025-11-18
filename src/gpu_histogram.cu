@@ -79,3 +79,11 @@ extern "C" bool gpu_histogram_count(const std::uint32_t *values, std::size_t cou
   cleanup();
   return success;
 }
+
+extern "C" bool gpu_runtime_available() {
+  int devices = 0;
+  auto status = cudaGetDeviceCount(&devices);
+  if (status != cudaSuccess)
+    return false;
+  return devices > 0;
+}

@@ -273,6 +273,7 @@ void usage(const char *prog) {
             << "  --emit-file path        Save matching lines to a file.\n"
             << "  --threads N             Force OpenMP thread count.\n"
             << "  --use-cuda              Use CUDA histogram backend.\n"
+            << "  --cpu-only              Disable CUDA even if enabled in the command.\n"
             << "  --help                  Show this message.\n";
 }
 
@@ -337,8 +338,12 @@ std::optional<ProgramConfig> parse_cli(int argc, char **argv, bool isRoot) {
       cfg.emitFile = argv[++i];
     } else if (arg == "--threads" && i + 1 < argc) {
       cfg.requestedThreads = std::stoi(argv[++i]);
+      if (cfg.requestedThreads <= 0)
+        throw std::runtime_error("--threads must be positive");
     } else if (arg == "--use-cuda") {
       cfg.useCuda = true;
+    } else if (arg == "--cpu-only") {
+      cfg.useCuda = false;
     } else {
       throw std::runtime_error("Unknown argument: " + arg);
     }
@@ -352,6 +357,11 @@ std::optional<ProgramConfig> parse_cli(int argc, char **argv, bool isRoot) {
   for (const auto &phrase : cfg.phrases) {
     cfg.phrasesNormalized.push_back(cfg.caseSensitive ? phrase : to_lower(phrase));
   }
+  if (cfg.useCuda && !gpu::is_available())
+    throw std::runtime_error(
+        "--use-cuda requested, but the binary was built without CUDA support "
+        "or no CUDA-capable device is available. Rebuild with USE_CUDA=1 and "
+        "run on a CUDA-enabled host, or drop --use-cuda.");
   return cfg;
 }
 
@@ -402,8 +412,16 @@ LocalResults analyze_chunk(const FileChunk &chunk, const ProgramConfig &cfg) {
 
   bool needTime = cfg.statsEnabled || cfg.fromTs || cfg.toTs;
   bool needSeverity = cfg.filterBySeverity;
+  bool enableParallel = false;
+#ifdef _OPENMP
+  int targetThreads =
+      cfg.requestedThreads > 0 ? cfg.requestedThreads : omp_get_max_threads();
+  enableParallel = (targetThreads > 1) && chunk.lines.size() >= 512;
+#else
+  (void)enableParallel;
+#endif
 
-#pragma omp parallel if (chunk.lines.size() > 1024)
+#pragma omp parallel if (enableParallel)
   {
     std::vector<std::uint64_t> threadCounts(cfg.phrases.size(), 0);
     std::unordered_map<std::string, std::uint64_t> localBuckets;
@@ -730,6 +748,7 @@ int main(int argc, char **argv) {
     ProgramConfig cfg = *cfgOpt;
 
 #ifdef _OPENMP
+    omp_set_dynamic(0);
     if (cfg.requestedThreads > 0)
       omp_set_num_threads(cfg.requestedThreads);
 #endif

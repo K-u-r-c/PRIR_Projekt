@@ -9,13 +9,15 @@ extern "C" bool gpu_histogram_count(const std::uint32_t *values,
                                      std::size_t count,
                                      std::size_t bucketCount,
                                      std::uint64_t *outCounts);
+extern "C" bool gpu_runtime_available();
 #endif
 
 namespace gpu {
 
 inline bool is_available() {
 #if defined(HAVE_CUDA_RUNTIME)
-  return true;
+  static const bool available = gpu_runtime_available();
+  return available;
 #else
   return false;
 #endif

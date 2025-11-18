@@ -38,9 +38,14 @@ Przyklady:
 make USE_CUDA=0                # tylko CPU (OpenMP + MPI)
 make USE_MPI=0 CXX=g++         # samodzielna binarka
 make USE_OPENMP=0              # bez OpenMP
+make USE_CUDA=1                # wlacza wsparcie CUDA (wymaga nvcc + sterownikow)
 ```
 
 Wynik: `build/bin/prir`.
+
+> Uwaga: opcja `--use-cuda` dziala tylko wtedy, gdy binarka zostala
+> skompilowana z `USE_CUDA=1` oraz system widzi karte CUDA. W innym wypadku
+> uruchomienie zakoncz sie bledem – nalezy odswiezyc build lub pominac flage.
 
 ## Uruchamianie
 
@@ -76,6 +81,7 @@ Statystyki i wyjscie:
 Wydajnosc:
   --threads N            wymusza liczbe watkow OpenMP
   --use-cuda             wlacza histogram GPU
+  --cpu-only             wymusza wykonanie na CPU (ignoruje --use-cuda)
 
 Inne:
   --help                 krotki opis
@@ -147,6 +153,11 @@ ktore razem tworza dashboard do uruchamiania scenariuszy testowych oraz porownyw
    Aby ustawic inny adres backendu, zdefiniuj `VITE_API_BASE_URL`
    (np. plik `.env.local`). Domyslnie aplikacja zaklada, ze backend nasluchuje
    pod `http://localhost:8000/api`.
+
+   Kazda karta scenariusza pozwala nadpisac liczbe watkow, wlaczyc/wylaczyc
+   CUDA oraz dopisac wlasne argumenty CLI. Te wartosci trafiaja do endpointu
+   backendu, dzieki czemu mozna natychmiast porownywac rezultaty roznych
+   konfiguracji.
 
 ## Licencja
 

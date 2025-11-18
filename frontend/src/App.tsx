@@ -29,6 +29,12 @@ interface ScenarioState {
   result?: RunResult
 }
 
+interface ScenarioOverride {
+  threads: string
+  useCuda: boolean
+  extraArgs: string
+}
+
 const statusOptions: { value: TestStatus; label: string }[] = [
   { value: 'pending', label: 'Pending' },
   { value: 'running', label: 'Running' },
@@ -81,6 +87,19 @@ const buildPerfSummary = (entries?: PerformanceEntry[]) => {
 
 const scenarioKey = (testId: string, scenarioId: string) => `${testId}:${scenarioId}`
 
+const commandHasFlag = (command: string, flag: string) => command.includes(flag)
+
+const extractThreadsFromCommand = (command: string): string => {
+  const match = command.match(/--threads(?:=|\s+)(\d+)/)
+  return match ? match[1] : ''
+}
+
+const defaultScenarioOverride = (scenario: TestScenario): ScenarioOverride => ({
+  threads: extractThreadsFromCommand(scenario.command),
+  useCuda: scenario.mode === 'gpu' || commandHasFlag(scenario.command, '--use-cuda'),
+  extraArgs: '',
+})
+
 function App() {
   const [suite, setSuite] = useState<SuiteInfo | null>(null)
   const [tests, setTests] = useState<TestCase[]>([])
@@ -89,6 +108,8 @@ function App() {
   const [selectedTestId, setSelectedTestId] = useState('')
   const [statuses, setStatuses] = useState<Record<string, TestStatus>>({})
   const [scenarioStates, setScenarioStates] = useState<Record<string, ScenarioState>>({})
+  const [scenarioOverrides, setScenarioOverrides] = useState<Record<string, ScenarioOverride>>({})
+  const [scenarioErrors, setScenarioErrors] = useState<Record<string, string>>({})
   const [copiedScenario, setCopiedScenario] = useState('')
   const [modeInput, setModeInput] = useState<PerformanceMode>('cpu')
   const [threadsInput, setThreadsInput] = useState('8')
@@ -140,6 +161,31 @@ function App() {
       () => (selectedTest ? buildPerfSummary(selectedTest.performance) : null),
       [selectedTest],
   )
+  const getScenarioOverride = (testId: string, scenario: TestScenario) => {
+    const key = scenarioKey(testId, scenario.id)
+    return scenarioOverrides[key] ?? defaultScenarioOverride(scenario)
+  }
+
+  const updateScenarioOverride = (testId: string, scenario: TestScenario, patch: Partial<ScenarioOverride>) => {
+    const key = scenarioKey(testId, scenario.id)
+    setScenarioOverrides((prev) => {
+      const current = prev[key] ?? defaultScenarioOverride(scenario)
+      return { ...prev, [key]: { ...current, ...patch } }
+    })
+    setScenarioErrors((prev) => {
+      if (!prev[key]) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const validateScenarioOverride = (override: ScenarioOverride) => {
+    if (override.threads.trim().length === 0) return null
+    const value = Number(override.threads)
+    if (!Number.isFinite(value) || value <= 0) return 'Threads must be a positive number.'
+    return null
+  }
 
   const handleStatusChange = (testId: string, next: TestStatus) => {
     setStatuses((prev) => ({ ...prev, [testId]: next }))
@@ -158,11 +204,25 @@ function App() {
 
   const handleRunScenario = async (test: TestCase, scenario: TestScenario) => {
     const key = scenarioKey(test.id, scenario.id)
+    const override = getScenarioOverride(test.id, scenario)
+    const validationError = validateScenarioOverride(override)
+    if (validationError) {
+      setScenarioErrors((prev) => ({ ...prev, [key]: validationError }))
+      return
+    }
+    const payload: Record<string, unknown> = {}
+    if (override.threads.trim()) payload.threads = Number(override.threads)
+    payload.useCuda = override.useCuda
+    if (override.extraArgs.trim()) payload.extraArgs = override.extraArgs.trim()
     setScenarioStates((prev) => ({ ...prev, [key]: { ...prev[key], running: true } }))
     try {
       const response = await fetch(
           `${API_BASE_URL}/tests/${encodeURIComponent(test.id)}/scenarios/${encodeURIComponent(scenario.id)}/run`,
-          { method: 'POST' },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          },
       )
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
@@ -340,6 +400,8 @@ function App() {
                     const state = scenarioStates[key]
                     const isRunning = state?.running ?? false
                     const lastResult = state?.result
+                    const override = getScenarioOverride(selectedTest.id, scenario)
+                    const overrideError = scenarioErrors[key]
                     return (
                       <article key={scenario.id} className="scenario-card">
                         <header>
@@ -369,11 +431,51 @@ function App() {
                           ))}
                         </div>
                         {scenario.notes && <p className="scenario-note">{scenario.notes}</p>}
+                        <div className="scenario-overrides">
+                          <label>
+                            Threads override
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={override.threads}
+                              onChange={(event) =>
+                                updateScenarioOverride(selectedTest.id, scenario, { threads: event.target.value })
+                              }
+                              placeholder="inherit"
+                            />
+                          </label>
+                          <label className="checkbox-row">
+                            <input
+                              type="checkbox"
+                              checked={override.useCuda}
+                              onChange={(event) =>
+                                updateScenarioOverride(selectedTest.id, scenario, { useCuda: event.target.checked })
+                              }
+                            />
+                            <span>Use CUDA</span>
+                          </label>
+                          <label>
+                            Extra CLI args
+                            <input
+                              type="text"
+                              value={override.extraArgs}
+                              onChange={(event) =>
+                                updateScenarioOverride(selectedTest.id, scenario, { extraArgs: event.target.value })
+                              }
+                              placeholder="e.g. --from 2019-01-22T03:56:00"
+                            />
+                          </label>
+                        </div>
+                        {overrideError && <p className="scenario-error">{overrideError}</p>}
                         {lastResult && (
                           <div className={`run-result ${lastResult.success ? 'is-success' : 'is-failure'}`}>
                             <p>
                               Last run: exit {lastResult.exitCode} • {formatMs(lastResult.durationMs)} •{' '}
                               {new Date(lastResult.finishedAt).toLocaleString()}
+                            </p>
+                            <p className="run-command">
+                              Command: <code>{lastResult.command}</code>
                             </p>
                             {lastResult.errorMessage && <p className="run-error">{lastResult.errorMessage}</p>}
                             <details>

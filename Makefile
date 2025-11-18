@@ -6,7 +6,7 @@ BIN_DIR      := $(BUILD_DIR)/bin
 
 USE_MPI      ?= 1
 USE_OPENMP   ?= 1
-USE_CUDA     ?= 1
+USE_CUDA     ?= 0
 
 HOST_CXX     ?= g++
 MPI_CXX      ?= mpicxx
@@ -53,7 +53,7 @@ LDFLAGS_DEBUG    := $(OPENMP_CXX)
 CUDA_HOME    ?= /usr/local/cuda
 CUDA_INC_DIR ?= $(CUDA_HOME)/include
 CUDA_LIB_DIR ?= $(CUDA_HOME)/lib64
-NVCCFLAGS    ?= -O3 -std=c++17 -I$(CUDA_INC_DIR)
+NVCCFLAGS    ?= -O3 -std=c++17 -I$(CURDIR) -I$(CUDA_INC_DIR)
 ifeq ($(USE_CUDA),1)
 NVCCFLAGS    += -DHAVE_CUDA_RUNTIME
 endif

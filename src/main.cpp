@@ -256,40 +256,24 @@ std::string detect_severity(const std::string &upperLine,
 }
 
 void usage(const char *prog) {
-  std::cerr << "Parallel log/text analyzer
-"
+  std::cerr << "Parallel log/text analyzer\n"
             << "Usage: " << prog
-            << " --file path --phrase WORD [options]
-
-"
-            << "Options:
-"
-            << "  --phrase TEXT           Phrase to count (repeatable).
-"
-            << "  --case-sensitive        Keep original casing when matching.
-"
-            << "  --level NAME            Severity to keep (repeatable).
-"
-            << "  --from YYYY-MM-DDTHH:MM:SS   Start of time window.
-"
-            << "  --to   YYYY-MM-DDTHH:MM:SS   End of time window.
-"
-            << "  --stats [hour|minute]   Time bucket granularity (default hour).
-"
-            << "  --no-stats              Disable time bucket statistics.
-"
-            << "  --count-filtered        Count phrases only for filtered lines.
-"
-            << "  --emit                  Print matching lines to stdout.
-"
-            << "  --emit-file path        Save matching lines to a file.
-"
-            << "  --threads N             Force OpenMP thread count.
-"
-            << "  --use-cuda              Use CUDA histogram backend.
-"
-            << "  --help                  Show this message.
-";
+            << " --file path --phrase WORD [options]\n"
+            << "\n"
+            << "Options:\n"
+            << "  --phrase TEXT           Phrase to count (repeatable).\n"
+            << "  --case-sensitive        Keep original casing when matching.\n"
+            << "  --level NAME            Severity to keep (repeatable).\n"
+            << "  --from YYYY-MM-DDTHH:MM:SS   Start of time window.\n"
+            << "  --to   YYYY-MM-DDTHH:MM:SS   End of time window.\n"
+            << "  --stats [hour|minute]   Time bucket granularity (default hour).\n"
+            << "  --no-stats              Disable time bucket statistics.\n"
+            << "  --count-filtered        Count phrases only for filtered lines.\n"
+            << "  --emit                  Print matching lines to stdout.\n"
+            << "  --emit-file path        Save matching lines to a file.\n"
+            << "  --threads N             Force OpenMP thread count.\n"
+            << "  --use-cuda              Use CUDA histogram backend.\n"
+            << "  --help                  Show this message.\n";
 }
 
 std::optional<ProgramConfig> parse_cli(int argc, char **argv, bool isRoot) {
@@ -511,16 +495,14 @@ LocalResults analyze_chunk(const FileChunk &chunk, const ProgramConfig &cfg) {
       if (gpu::histogram(res.gpuHits, cfg.phrases.size(), res.phraseCounts))
         res.gpuUsed = true;
       else
-        std::cerr << "[warn] GPU histogram failed, falling back to CPU
-";
+        std::cerr << "[warn] GPU histogram failed, falling back to CPU\n";
     } else {
-      std::cerr << "[warn] CUDA backend not available, falling back to CPU
-";
+      std::cerr << "[warn] CUDA backend not available, falling back to CPU\n";
     }
     if (!res.gpuUsed) {
       res.phraseCounts.assign(cfg.phrases.size(), 0);
       for (std::uint32_t idx : res.gpuHits) {
-        if (idx < res.phrases.size())
+        if (idx < cfg.phrases.size())
           ++res.phraseCounts[idx];
       }
     }
@@ -698,22 +680,17 @@ LocalResults mpi_recv_results(int src, size_t phrases, MPI_Comm comm,
 #endif
 
 void dump_results(const LocalResults &res, const ProgramConfig &cfg) {
-  std::cout << "phrase,count
-";
+  std::cout << "phrase,count\n";
   for (size_t i = 0; i < cfg.phrases.size(); ++i)
-    std::cout << cfg.phrases[i] << "," << res.phraseCounts[i] << "
-";
+    std::cout << cfg.phrases[i] << "," << res.phraseCounts[i] << "\n";
   if (cfg.statsEnabled) {
-    std::cout << "
-interval,count
-";
+    std::cout << "\ninterval,count\n";
     std::vector<std::pair<std::string, std::uint64_t>> rows(res.timeBuckets.begin(),
                                                        res.timeBuckets.end());
     std::sort(rows.begin(), rows.end(),
               [](const auto &a, const auto &b) { return a.first < b.first; });
     for (auto &kv : rows)
-      std::cout << kv.first << "," << kv.second << "
-";
+      std::cout << kv.first << "," << kv.second << "\n";
   }
 }
 
@@ -722,14 +699,12 @@ void emit_matches_root(const LocalResults &res, const ProgramConfig &cfg) {
     return;
   if (cfg.emitStdout) {
     for (const auto &line : res.matchingLines)
-      std::cout << line << "
-";
+      std::cout << line << "\n";
   }
   if (!cfg.emitFile.empty()) {
     std::ofstream out(cfg.emitFile, std::ios::app);
     for (const auto &line : res.matchingLines)
-      out << line << "
-";
+      out << line << "\n";
   }
 }
 
@@ -792,8 +767,7 @@ int main(int argc, char **argv) {
     return 0;
   } catch (const std::exception &e) {
     if (rank == 0)
-      std::cerr << "Error: " << e.what() << "
-";
+      std::cerr << "Error: " << e.what() << "\n";
 #if defined(USE_MPI)
     MPI_Abort(MPI_COMM_WORLD, 1);
 #else

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
@@ -39,36 +40,42 @@ extern "C" bool gpu_histogram_count(const std::uint32_t *values, std::size_t cou
   std::size_t valuesBytes = count * sizeof(std::uint32_t);
   std::size_t outBytes = bucketCount * sizeof(unsigned long long);
 
-  if (!check(cudaMalloc(reinterpret_cast<void **>(&dValues), valuesBytes)))
-    goto fail;
-  if (!check(cudaMalloc(reinterpret_cast<void **>(&dOut), outBytes)))
-    goto fail;
-  if (!check(cudaMemcpy(dValues, values, valuesBytes, cudaMemcpyHostToDevice)))
-    goto fail;
-  if (!check(cudaMemset(dOut, 0, outBytes)))
-    goto fail;
+  auto cleanup = [&]() {
+    if (dValues)
+      cudaFree(dValues);
+    if (dOut)
+      cudaFree(dOut);
+  };
 
-  constexpr int blockSize = 256;
-  int blocks = static_cast<int>((count + blockSize - 1) / blockSize);
-  blocks = std::max(1, std::min(blocks, 4096));
+  bool success = false;
+  do {
+    if (!check(cudaMalloc(reinterpret_cast<void **>(&dValues), valuesBytes)))
+      break;
+    if (!check(cudaMalloc(reinterpret_cast<void **>(&dOut), outBytes)))
+      break;
+    if (!check(cudaMemcpy(dValues, values, valuesBytes, cudaMemcpyHostToDevice)))
+      break;
+    if (!check(cudaMemset(dOut, 0, outBytes)))
+      break;
 
-  histogram_kernel<<<blocks, blockSize>>>(dValues, count, bucketCount, dOut);
-  if (!check(cudaGetLastError()))
-    goto fail;
-  if (!check(cudaDeviceSynchronize()))
-    goto fail;
+    constexpr int blockSize = 256;
+    int blocks = static_cast<int>((count + blockSize - 1) / blockSize);
+    blocks = std::max(1, std::min(blocks, 4096));
 
-  if (!check(cudaMemcpy(outCounts, dOut, outBytes, cudaMemcpyDeviceToHost)))
-    goto fail;
+    void *kernelArgs[] = {&dValues, &count, &bucketCount, &dOut};
+    if (!check(cudaLaunchKernel(reinterpret_cast<const void *>(histogram_kernel),
+                                dim3(blocks), dim3(blockSize), kernelArgs, 0,
+                                nullptr)))
+      break;
+    if (!check(cudaDeviceSynchronize()))
+      break;
 
-  cudaFree(dValues);
-  cudaFree(dOut);
-  return true;
+    if (!check(cudaMemcpy(outCounts, dOut, outBytes, cudaMemcpyDeviceToHost)))
+      break;
 
-fail:
-  if (dValues)
-    cudaFree(dValues);
-  if (dOut)
-    cudaFree(dOut);
-  return false;
+    success = true;
+  } while (false);
+
+  cleanup();
+  return success;
 }

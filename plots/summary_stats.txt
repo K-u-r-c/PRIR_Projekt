@@ -1,0 +1,32 @@
+================================================================================
+PRIR PROJECT - BENCHMARK SUMMARY
+================================================================================
+
+OGÓLNE STATYSTYKI:
+--------------------------------------------------------------------------------
+Łączna liczba testów: 19
+Rozmiar pliku testowego: 3.5 GB
+
+NAJLEPSZE WYNIKI:
+--------------------------------------------------------------------------------
+Najszybszy test: MPI procs=8
+  - Czas: 5430.00 ms
+  - Konfiguracja: threads=4, mode=mpi
+  - Przepustowość: 0.64 GB/s
+
+Najszybszy CPU: 16 wątków
+  - Czas: 18706.00 ms
+  - Przyspieszenie vs 1 wątek: 2.14x
+
+Najszybszy GPU: 8 wątków
+  - Czas: 20051.00 ms
+
+PORÓWNANIE CPU vs GPU:
+--------------------------------------------------------------------------------
+1 wątków: CPU=40110ms, GPU=41683ms (Winner: CPU, ratio: 0.96x)
+2 wątków: CPU=27422ms, GPU=28057ms (Winner: CPU, ratio: 0.98x)
+4 wątków: CPU=23996ms, GPU=22512ms (Winner: GPU, ratio: 1.07x)
+8 wątków: CPU=20041ms, GPU=20051ms (Winner: CPU, ratio: 1.00x)
+16 wątków: CPU=18706ms, GPU=20806ms (Winner: CPU, ratio: 0.90x)
+
+================================================================================
